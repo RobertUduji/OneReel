@@ -1,21 +1,28 @@
 import React, { useState } from 'react';
-import { View, TextInput, StyleSheet, Image, TouchableOpacity, Text, ScrollView, Alert } from 'react-native';
+import {
+  View, TextInput, StyleSheet, Image, TouchableOpacity, Text,
+  ScrollView, Alert, Modal
+} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { analyzeImageWithGemini } from '@/lib/gemini';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as VideoThumbnails from 'expo-video-thumbnails';
-
-
-
+import { Video } from 'expo-av';
 
 export default function HomeScreen() {
   const [searchText, setSearchText] = useState('');
+  const [modalVisible, setModalVisible] = useState(false);
+  const [currentVideoUri, setCurrentVideoUri] = useState<string | null>(null);
+
   type ImageData = {
     uri: string;
+    previewUri: string;
     description: string;
     type: 'image' | 'video';
   };
+
   const [images, setImages] = useState<(ImageData | null)[]>([null, null, null, null, null, null]);
+
   const pickMedia = async (index: number) => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
@@ -34,49 +41,73 @@ export default function HomeScreen() {
 
     const asset = result.assets[0];
     const uri = asset.uri;
-
     let description = '';
+    const newImages = [...images];
 
     if (asset.type === 'video') {
       try {
-        // Extract frames every 5 seconds up to 20 seconds (adjust as needed)
         const frameTimes = [0, 5000, 10000, 15000, 20000];
         const framePromises = frameTimes.map(async (time) => {
-          const { uri: frameUri } = await VideoThumbnails.getThumbnailAsync(uri, { time });
-          const manipulated = await ImageManipulator.manipulateAsync(frameUri, [], { base64: true });
+          const { uri: thumbUri } = await VideoThumbnails.getThumbnailAsync(uri, { time });
+          const manipulated = await ImageManipulator.manipulateAsync(thumbUri, [], { base64: true });
           const base64 = manipulated.base64 || '';
-          return await analyzeImageWithGemini(base64, 'Summarize this frame for video search');
+          const frameDescription = await analyzeImageWithGemini(base64, 'Summarize this frame for video search');
+          console.log(`🟩 Frame at ${time}ms:`, frameDescription);
+          return frameDescription;
         });
 
         const frameDescriptions = await Promise.all(framePromises);
         description = frameDescriptions.join(' ');
+
+        const { uri: previewUri } = await VideoThumbnails.getThumbnailAsync(uri, { time: 0 });
+
+        newImages[index] = {
+          uri,
+          previewUri,
+          description,
+          type: 'video',
+        };
       } catch (error) {
         console.error('Error processing video:', error);
         Alert.alert('Error', 'Failed to process video frames.');
         return;
       }
-    } else {
-      // Handle image
-      const manipulated = await ImageManipulator.manipulateAsync(uri, [], { base64: true });
-      const base64 = manipulated.base64 || '';
-      description = await analyzeImageWithGemini(base64, 'Describe this image for AI search filtering');
     }
 
-    console.log('AI description:', description);
+   else {
+    const manipulated = await ImageManipulator.manipulateAsync(uri, [], { base64: true });
+  const base64 = manipulated.base64 || '';
+  description = await analyzeImageWithGemini(base64, 'Describe this image for AI search filtering');
 
-    const newImages = [...images];
-    newImages[index] = { uri, description, type: asset.type as 'image' | 'video' };
-    setImages(newImages);
-};
+  newImages[index] = {
+    uri,
+    previewUri: uri,
+    description,
+    type: 'image',
+  };
+}
 
-  const renderSlot = (index: number, uri: string | null, type?: 'image' | 'video') => (
-  <TouchableOpacity key={index} style={styles.imageSlot} onPress={() => pickMedia(index)}>
+console.log('AI description:', description);
+setImages(newImages);
+  };
+
+const renderSlot = (index: number, uri: string | null, type?: 'image' | 'video') => (
+  <TouchableOpacity
+    key={index}
+    style={styles.imageSlot}
+    onPress={() => {
+      if (uri && type === 'video') {
+        setCurrentVideoUri(uri);
+        setModalVisible(true);
+      } else {
+        pickMedia(index);
+      }
+    }}
+  >
     {uri ? (
-      <View>
-        <Image source={{ uri }} style={styles.imagePreview} />
-        {type === 'video' && (
-          <Text style={styles.playIcon}>▶</Text>
-        )}
+      <View style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <Image source={{ uri: images[index]?.previewUri }} style={styles.imagePreview} />
+        {type === 'video' && <Text style={styles.playIcon}>▶</Text>}
       </View>
     ) : (
       <Text style={styles.placeholder}>+</Text>
@@ -84,7 +115,8 @@ export default function HomeScreen() {
   </TouchableOpacity>
 );
 
-  return (
+return (
+  <>
     <ScrollView contentContainerStyle={styles.container}>
       <TextInput
         placeholder="Search..."
@@ -100,7 +132,7 @@ export default function HomeScreen() {
 
           const matchesSearch =
             searchText.trim() === '' ||
-            new RegExp(searchText.trim(), 'i').test(img.description)
+            new RegExp(searchText.trim(), 'i').test(img.description);
 
           return matchesSearch ? renderSlot(index, img.uri, img.type) : null;
         })}
@@ -112,13 +144,35 @@ export default function HomeScreen() {
           new RegExp(searchText.trim(), 'i').test(img.description)
         )
       ).length === 0 && (
-        <Text style={{ marginTop: 20, textAlign: 'center', color: '#666' }}>
-          No matching results.
-        </Text>
-      )}
-   
+          <Text style={{ marginTop: 20, textAlign: 'center', color: '#666' }}>
+            No matching results.
+          </Text>
+        )}
     </ScrollView>
-  );
+
+    <Modal
+      visible={modalVisible}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={() => setModalVisible(false)}
+    >
+      <View style={{ flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }}>
+        <Video
+          source={{ uri: currentVideoUri || '' }}
+          useNativeControls
+          resizeMode="contain"
+          style={{ width: '100%', height: 300 }}
+        />
+        <TouchableOpacity
+          onPress={() => setModalVisible(false)}
+          style={{ marginTop: 20, padding: 10, backgroundColor: 'white', borderRadius: 8 }}
+        >
+          <Text style={{ fontSize: 16, fontWeight: 'bold' }}>Close</Text>
+        </TouchableOpacity>
+      </View>
+    </Modal>
+  </>
+);
 }
 
 const styles = StyleSheet.create({
@@ -160,13 +214,14 @@ const styles = StyleSheet.create({
     color: '#aaa',
   },
   playIcon: {
-  position: 'absolute',
-  top: '40%',
-  left: '45%',
-  fontSize: 28,
-  color: 'white',
-  backgroundColor: 'rgba(0,0,0,0.5)',
-  borderRadius: 20,
-  paddingHorizontal: 8,
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -12 }, { translateY: -12 }],
+    fontSize: 24,
+    color: 'white',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20,
+    paddingHorizontal: 6,
   },
 });
