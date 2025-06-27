@@ -1,7 +1,5 @@
-// app/intro.tsx
 import React from 'react';
-import { StyleSheet, ImageBackground, View, Text, Button } from 'react-native';
-import { router } from 'expo-router';
+import { StyleSheet, ImageBackground, View, Text } from 'react-native';
 
 export default function TabTwoScreen() {
   return (
@@ -11,8 +9,7 @@ export default function TabTwoScreen() {
       resizeMode="cover"
     >
       <View style={styles.overlay}>
-        {/* <Text style={styles.text}>Welcome to OneReel</Text>
-        <Button title="Get Started" onPress={() => router.replace('/(tabs)/index')} /> */}
+        <Text style={styles.text}>This page is under development</Text>
       </View>
     </ImageBackground>
   );
@@ -23,18 +20,16 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
-    backgroundColor: '#fff'
+    backgroundColor: '#fff',
   },
   overlay: {
     flex: 1,
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
     alignItems: 'center',
-    paddingBottom: 80,
   },
   text: {
-    color: '#fff',
-    fontSize: 24,
+    color: '#795695', // purple
+    fontSize: 20,
     fontWeight: 'bold',
-    marginBottom: 20,
   },
 });
