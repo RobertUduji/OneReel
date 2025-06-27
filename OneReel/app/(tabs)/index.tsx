@@ -3,58 +3,86 @@ import { View, TextInput, StyleSheet, Image, TouchableOpacity, Text, ScrollView,
 import * as ImagePicker from 'expo-image-picker';
 import { analyzeImageWithGemini } from '@/lib/gemini';
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as VideoThumbnails from 'expo-video-thumbnails';
+
+
+
 
 export default function HomeScreen() {
   const [searchText, setSearchText] = useState('');
   type ImageData = {
     uri: string;
     description: string;
+    type: 'image' | 'video';
   };
   const [images, setImages] = useState<(ImageData | null)[]>([null, null, null, null, null, null]);
+  const pickMedia = async (index: number) => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert('Permission required', 'Please grant photo library access.');
+      return;
+    }
 
-  const pickImage = async (index: number) => {
-  const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      allowsEditing: false,
+      base64: false,
+      quality: 0.8,
+    });
 
-  if (!permissionResult.granted) {
-    Alert.alert('Permission required', 'Please grant photo library access.');
-    return;
-  }
+    if (result.canceled) return;
 
-  const result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    allowsEditing: true,
-    aspect: [1, 1],
-    quality: 0.8,
-    base64: false,
-  });
+    const asset = result.assets[0];
+    const uri = asset.uri;
 
-  if (!result.canceled) {
-    const uri = result.assets[0].uri;
+    let description = '';
 
-    // Convert to base64
-    const manipulated = await ImageManipulator.manipulateAsync(uri, [], { base64: true });
-    const base64 = manipulated.base64 || '';
+    if (asset.type === 'video') {
+      try {
+        // Extract frames every 5 seconds up to 20 seconds (adjust as needed)
+        const frameTimes = [0, 5000, 10000, 15000, 20000];
+        const framePromises = frameTimes.map(async (time) => {
+          const { uri: frameUri } = await VideoThumbnails.getThumbnailAsync(uri, { time });
+          const manipulated = await ImageManipulator.manipulateAsync(frameUri, [], { base64: true });
+          const base64 = manipulated.base64 || '';
+          return await analyzeImageWithGemini(base64, 'Summarize this frame for video search');
+        });
 
-    // Call Gemini
-    const description = await analyzeImageWithGemini(base64, 'Describe this image for AI search filtering');
+        const frameDescriptions = await Promise.all(framePromises);
+        description = frameDescriptions.join(' ');
+      } catch (error) {
+        console.error('Error processing video:', error);
+        Alert.alert('Error', 'Failed to process video frames.');
+        return;
+      }
+    } else {
+      // Handle image
+      const manipulated = await ImageManipulator.manipulateAsync(uri, [], { base64: true });
+      const base64 = manipulated.base64 || '';
+      description = await analyzeImageWithGemini(base64, 'Describe this image for AI search filtering');
+    }
+
     console.log('AI description:', description);
 
     const newImages = [...images];
-    newImages[index] = { uri, description };
+    newImages[index] = { uri, description, type: asset.type as 'image' | 'video' };
     setImages(newImages);
-  }
 };
 
-  const renderSlot = (index: number, uri: string | null) => (
-    <TouchableOpacity key={index} style={styles.imageSlot} onPress={() => pickImage(index)}>
-      {uri ? (
+  const renderSlot = (index: number, uri: string | null, type?: 'image' | 'video') => (
+  <TouchableOpacity key={index} style={styles.imageSlot} onPress={() => pickMedia(index)}>
+    {uri ? (
+      <View>
         <Image source={{ uri }} style={styles.imagePreview} />
-      ) : (
-        <Text style={styles.placeholder}>+</Text>
-      )}
-    </TouchableOpacity>
-  );
-
+        {type === 'video' && (
+          <Text style={styles.playIcon}>▶</Text>
+        )}
+      </View>
+    ) : (
+      <Text style={styles.placeholder}>+</Text>
+    )}
+  </TouchableOpacity>
+);
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
@@ -74,7 +102,7 @@ export default function HomeScreen() {
             searchText.trim() === '' ||
             new RegExp(searchText.trim(), 'i').test(img.description)
 
-          return matchesSearch ? renderSlot(index, img.uri) : null;
+          return matchesSearch ? renderSlot(index, img.uri, img.type) : null;
         })}
       </View>
 
@@ -130,5 +158,15 @@ const styles = StyleSheet.create({
   placeholder: {
     fontSize: 32,
     color: '#aaa',
+  },
+  playIcon: {
+  position: 'absolute',
+  top: '40%',
+  left: '45%',
+  fontSize: 28,
+  color: 'white',
+  backgroundColor: 'rgba(0,0,0,0.5)',
+  borderRadius: 20,
+  paddingHorizontal: 8,
   },
 });
