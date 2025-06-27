@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import {
   View, TextInput, StyleSheet, Image, TouchableOpacity, Text,
-  ScrollView, Alert, Modal
+  ScrollView, Alert, Modal, ImageBackground
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { analyzeImageWithGemini } from '@/lib/gemini';
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as VideoThumbnails from 'expo-video-thumbnails';
 import { Video } from 'expo-av';
+import BackgroundImage from '@/assets/images/HomeBackground1.png';
+import HeaderIcon from '@/assets/images/HomeUpperIcon.png';
+
 
 export default function HomeScreen() {
   const [searchText, setSearchText] = useState('');
@@ -74,121 +77,163 @@ export default function HomeScreen() {
       }
     }
 
-   else {
-    const manipulated = await ImageManipulator.manipulateAsync(uri, [], { base64: true });
-  const base64 = manipulated.base64 || '';
-  description = await analyzeImageWithGemini(base64, 'Describe this image for AI search filtering');
+    else {
+      const manipulated = await ImageManipulator.manipulateAsync(uri, [], { base64: true });
+      const base64 = manipulated.base64 || '';
+      description = await analyzeImageWithGemini(base64, 'Describe this image for AI search filtering');
 
-  newImages[index] = {
-    uri,
-    previewUri: uri,
-    description,
-    type: 'image',
+      newImages[index] = {
+        uri,
+        previewUri: uri,
+        description,
+        type: 'image',
+      };
+    }
+
+    console.log('AI description:', description);
+    setImages(newImages);
   };
-}
 
-console.log('AI description:', description);
-setImages(newImages);
-  };
-
-const renderSlot = (index: number, uri: string | null, type?: 'image' | 'video') => (
-  <TouchableOpacity
-    key={index}
-    style={styles.imageSlot}
-    onPress={() => {
-      if (uri && type === 'video') {
-        setCurrentVideoUri(uri);
-        setModalVisible(true);
-      } else {
-        pickMedia(index);
-      }
-    }}
-  >
-    {uri ? (
-      <View style={{ position: 'relative', width: '100%', height: '100%' }}>
-        <Image source={{ uri: images[index]?.previewUri }} style={styles.imagePreview} />
-        {type === 'video' && <Text style={styles.playIcon}>▶</Text>}
-      </View>
-    ) : (
-      <Text style={styles.placeholder}>+</Text>
-    )}
-  </TouchableOpacity>
-);
-
-return (
-  <>
-    <ScrollView contentContainerStyle={styles.container}>
-      <TextInput
-        placeholder="Search..."
-        placeholderTextColor="#999"
-        value={searchText}
-        onChangeText={setSearchText}
-        style={styles.searchBar}
-      />
-
-      <View style={styles.gallery}>
-        {images.map((img, index) => {
-          if (!img) return renderSlot(index, null);
-
-          const matchesSearch =
-            searchText.trim() === '' ||
-            new RegExp(searchText.trim(), 'i').test(img.description);
-
-          return matchesSearch ? renderSlot(index, img.uri, img.type) : null;
-        })}
-      </View>
-
-      {images.filter(img =>
-        img && (
-          searchText.trim() === '' ||
-          new RegExp(searchText.trim(), 'i').test(img.description)
-        )
-      ).length === 0 && (
-          <Text style={{ marginTop: 20, textAlign: 'center', color: '#666' }}>
-            No matching results.
-          </Text>
-        )}
-    </ScrollView>
-
-    <Modal
-      visible={modalVisible}
-      animationType="slide"
-      transparent={false}
-      onRequestClose={() => setModalVisible(false)}
+  const renderSlot = (index: number, uri: string | null, type?: 'image' | 'video') => (
+    <TouchableOpacity
+      key={index}
+      style={styles.imageSlot}
+      onPress={() => {
+        if (uri && type === 'video') {
+          setCurrentVideoUri(uri);
+          setModalVisible(true);
+        } else {
+          pickMedia(index);
+        }
+      }}
     >
-      <View style={{ flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }}>
-        <Video
-          source={{ uri: currentVideoUri || '' }}
-          useNativeControls
-          resizeMode="contain"
-          style={{ width: '100%', height: 300 }}
-        />
-        <TouchableOpacity
-          onPress={() => setModalVisible(false)}
-          style={{ marginTop: 20, padding: 10, backgroundColor: 'white', borderRadius: 8 }}
+      {uri ? (
+        <View style={{ position: 'relative', width: '100%', height: '100%' }}>
+          <Image source={{ uri: images[index]?.previewUri }} style={styles.imagePreview} />
+          {type === 'video' && <Text style={styles.playIcon}>▶</Text>}
+        </View>
+      ) : (
+        <Text style={styles.placeholder}>+</Text>
+      )}
+    </TouchableOpacity>
+  );
+
+  return (
+    <>
+      <View style={styles.backgroundWrapper}>
+        <ImageBackground
+          source={BackgroundImage}
+          style={styles.backgroundImage}
+          resizeMode="cover"
         >
-          <Text style={{ fontSize: 16, fontWeight: 'bold' }}>Close</Text>
-        </TouchableOpacity>
+          <ScrollView contentContainerStyle={styles.container}>
+            <Image source={HeaderIcon} style={styles.headerImage} />
+            <View style={styles.searchBarContainer}>
+              <TextInput
+                placeholder="AI Search"
+                placeholderTextColor="#999"
+                value={searchText}
+                onChangeText={setSearchText}
+                style={styles.searchInput}
+              />
+              <Image source={require('@/assets/icons/AIsymbol.png')} style={styles.aiIcon} />
+            </View>
+            <View style={styles.gallery}>
+              {images.map((img, index) => {
+                if (!img) return renderSlot(index, null);
+
+                const matchesSearch =
+                  searchText.trim() === '' ||
+                  new RegExp(searchText.trim(), 'i').test(img.description);
+
+                return matchesSearch ? renderSlot(index, img.uri, img.type) : null;
+              })}
+            </View>
+
+            {images.filter(img =>
+              img && (
+                searchText.trim() === '' ||
+                new RegExp(searchText.trim(), 'i').test(img.description)
+              )
+            ).length === 0 && (
+                <Text style={{ marginTop: 20, textAlign: 'center', color: '#666' }}>
+                  No matching results.
+                </Text>
+              )}
+          </ScrollView>
+        </ImageBackground>
       </View>
-    </Modal>
-  </>
-);
+
+      {/* Modal stays outside */}
+      <Modal
+        visible={modalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'black', justifyContent: 'center', alignItems: 'center' }}>
+          <Video
+            source={{ uri: currentVideoUri || '' }}
+            useNativeControls
+            resizeMode="contain"
+            style={{ width: '100%', height: 300 }}
+          />
+          <TouchableOpacity
+            onPress={() => setModalVisible(false)}
+            style={{ marginTop: 20, padding: 10, backgroundColor: 'white', borderRadius: 8 }}
+          >
+            <Text style={{ fontSize: 16, fontWeight: 'bold' }}>Close</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+    </>
+  );
+
+
 }
 
 const styles = StyleSheet.create({
+  backgroundWrapper: {
+    flex: 1,
+    backgroundColor: 'white', // base layer for blending
+  },
+  backgroundImage: {
+    flex: 1,
+    width: '100%',
+    height: '100%',
+  },
+  headerImage: {
+    width: 999,
+    height: 132,
+    resizeMode: 'contain',
+    alignSelf: 'center',
+    marginBottom: 20,
+  },
   container: {
     padding: 16,
-    paddingTop: 100,
-    backgroundColor: 'white',
+    paddingTop: 0,
+    backgroundColor: 'transparent', // allow image background to show through
     flexGrow: 1,
   },
-  searchBar: {
-    height: 40,
+  searchBarContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderColor: '#ccc',
     borderWidth: 1,
-    paddingHorizontal: 12,
     borderRadius: 8,
     marginBottom: 20,
+    paddingHorizontal: 10,
+    height: 40,
+    backgroundColor: 'white', // optional: makes search bar stand out
+  },
+  searchInput: {
+    flex: 1,
+    color: '#000',
+  },
+  aiIcon: {
+    width: 23,
+    height: 23,
+    marginLeft: 8,
   },
   gallery: {
     flexDirection: 'row',
